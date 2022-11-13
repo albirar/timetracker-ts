@@ -25,3 +25,6 @@ dist-ssr
 tmp
 temp
 public/vendor
+timetracker_api.d.ts
+timetracker_api.js
+timetracker_api.js.map

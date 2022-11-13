@@ -1,6 +1,6 @@
 {
     "name": "@albirar.cat/timetracker-ts",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "author": {
         "name": "Octavi Fornés",
         "email": "ofornes@albirar.cat"
@@ -18,15 +18,15 @@
         "url": "https://github.com/albirar/timetracker-ts.git"
     },
     "type": "module",
+    
     "files": [
-        "dist/timetracker_api.js",
-        "dist/timetracker_api.js.map",
-        "dist/timetracker_api.d.ts"
+        "timetracker_api.js",
+        "timetracker_api.js.map",
+        "timetracker_api.d.ts"
     ],
     "scripts": {
-        "clear": "rimraf dist",
-        "build": "npm run clear && rollup -c && tsc",
-        "publish": "npm publish --access public"
+        "build": "rollup -c && tsc",
+        "publish-npm": "npm publish --access public"
     },
     "main": "timetracker_api.js",
     "types": "timetracker_api.d.ts",

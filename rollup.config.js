@@ -8,7 +8,7 @@ export default [
     plugins: [esbuild()],
     output: [
       {
-        file: `dist/timetracker_api.js`,
+        file: `timetracker_api.js`,
         format: 'cjs',
         sourcemap: true,
         exports: 'auto'
@@ -20,7 +20,7 @@ export default [
     external: ['moment'],
     plugins: [dts()],
     output: {
-      file: `dist/timetracker_api.d.ts`,
+      file: `timetracker_api.d.ts`,
       format: 'es'
     },
   }
