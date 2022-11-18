@@ -1,4 +1,5 @@
 import moment from 'moment';
+import { DbStorage_Api, IndexDefinition, instantiateDb } from './timetracker-db';
 
 export enum CheckState {
     CheckedInState = "CheckedIn",
@@ -95,6 +96,7 @@ class regSbucriber {
     }
 
 }
+
 class ApiCheckRegisterSingleton implements ApiCheckRegister {
     private static _instance : ApiCheckRegisterSingleton;
     private _checkOperation: CheckOperationRegister | undefined;
@@ -106,6 +108,8 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
     private _currentState: CheckState;
 
     private _subscribers : regSbucriber[];
+
+    private _dbstorage : DbStorage_Api<CheckOperationRegister> | undefined;
 
     constructor () {
         this._lastSyncrhonization = 0;
@@ -220,6 +224,7 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
 
     private registerOp(reg: CheckOperationRegisterImpl) : CheckOperationRegister {
         var event: CheckEventImpl;
+        this.dbRegisterOp(reg);
         this._operations.push(reg);
         this._tsLasChange = reg.moment;
         this._currentState = (reg.checkOperation == CheckOperation.CheckInOperation ? CheckState.CheckedInState : CheckState.CheckedOutState);
@@ -228,6 +233,24 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
             item.fn(event);
         })
         return reg;
+    }
+
+    private async dbRegisterOp(reg: CheckOperationRegister) {
+        if(this._dbstorage === undefined) {
+            this._dbstorage = await this.dbCheckAndOpen();
+        }
+        this._dbstorage.addRegister(reg);
+    }
+
+    private async dbCheckAndOpen() : Promise<DbStorage_Api<CheckOperationRegister>> {
+        return new Promise(async (resolve, reject) => {
+            instantiateDb<CheckOperationRegister>("DBTIMETRACKER", [new IndexDefinition("idx_moments", "moment", true)]).then((((value: DbStorage_Api<CheckOperationRegister>) => {
+                if(!value.checkStatus) {
+                    reject("Cannot open DB!");
+                }
+                resolve(value);
+            })));
+        });
     }
 }
 

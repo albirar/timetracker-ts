@@ -1,0 +1,47 @@
+
+    addRegister(register : CheckOperationRegister) : Promise<CheckOperationRegister> {
+        let tx : IDBTransaction;
+        let ostore: IDBObjectStore;
+        let req : IDBRequest<IDBValidKey>;
+        let ret : boolean;
+
+        tx = this._db.transaction(NAME_OS_REGISTERS,'readwrite');
+        ostore = tx.objectStore(NAME_OS_REGISTERS);
+        try {
+            req = ostore.add(register);
+            tx.commit();
+        } catch (e) {
+            tx.abort();
+            throw new Error(`On save register ${register}, ${e}`);
+        }
+        req.onerror = () => {
+            ret = false;
+        }
+        req.onsuccess = () => {
+            ret = true;
+        }
+        return new Promise((resolve, reject) => {
+            if(ret) {
+                resolve(register);
+            } else {
+                reject(register);
+            }
+        });
+    }
+
+    readLastRegister() : Promise<CheckOperationRegister> {
+        let tx : IDBTransaction;
+        let ostore: IDBObjectStore;
+        let req : IDBRequest<IDBValidKey>;
+        let ret : boolean;
+        let cnt: IDBRequest<number>;
+
+        tx = this._db.transaction(NAME_OS_REGISTERS,'readonly');
+        ostore = tx.objectStore(NAME_OS_REGISTERS);
+        ostore.getAll()
+        cnt = ostore.count();
+        cnt.onsuccess = () => {
+            ostore.get()
+            cnt.result;
+        }
+    }
