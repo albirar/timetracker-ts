@@ -3,12 +3,12 @@ import esbuild from 'rollup-plugin-esbuild'
 
 export default [
   {
-    input: `src/timetracker_api.ts`,
+    input: `src/timetracker-api.ts`,
     external: ['moment'],
     plugins: [esbuild()],
     output: [
       {
-        file: `dist/timetracker_api.cjs`,
+        file: `dist/timetracker-api.cjs`,
         format: 'cjs',
         sourcemap: true,
         exports: 'auto'
@@ -16,11 +16,11 @@ export default [
     ]
   },
   {
-    input: `src/timetracker_api.ts`,
+    input: `src/timetracker-api.ts`,
     external: ['moment'],
     plugins: [dts()],
     output: {
-      file: `dist/timetracker_api.d.ts`,
+      file: `dist/timetracker-api.d.ts`,
       format: 'es'
     },
   }

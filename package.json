@@ -19,9 +19,9 @@
     },
     "type": "module",
     "files": [
-        "timetracker_api.cjs",
-        "timetracker_api.cjs.map",
-        "timetracker_api.d.ts"
+        "dist/timetracker-api.cjs",
+        "dist/timetracker-api.cjs.map",
+        "dist/timetracker-api.d.ts"
     ],
     "scripts": {
         "test": "jest --config=jest.config.cjs",
@@ -29,8 +29,8 @@
         "build": "rollup -c && tsc",
         "publish-npm": "npm publish --access public"
     },
-    "main": "timetracker_api.cjs",
-    "types": "timetracker_api.d.ts",
+    "main": "timetracker-api.cjs",
+    "types": "timetracker-api.d.ts",
     "devDependencies": {
         "@rollup/plugin-typescript": "^9.0.2",
         "@types/jest": "^29.2.3",

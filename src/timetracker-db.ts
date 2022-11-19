@@ -64,6 +64,7 @@ class DbRegister<T> {
 class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
     private _dbName : string;
     private _status : boolean;
+    private _indexes : IndexDefinition [] | undefined;
     
     constructor() {
         this._status = false;
@@ -86,17 +87,20 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
         });
     }
 
-    async openDb(dbName: string, indexes?: IndexDefinition []) : Promise<void> {
+    async openDb(dbName: string, indexes?: IndexDefinition []) : Promise<IDBDatabase> {
         var dbRequest: IDBOpenDBRequest;
         this._dbName = dbName;
         return new Promise((resolve, reject) => {
+            if(indexes != undefined) {
+                this._indexes = indexes;
+            }
             dbRequest = indexedDB.open(this._dbName, 1);
             dbRequest.onerror = (err) => {
                 reject(err);
             }
             dbRequest.onsuccess = () => {
                 this._status = true;
-                resolve();
+                resolve(dbRequest.result);
             }
             dbRequest.onupgradeneeded = async () => {
                 const db = dbRequest.result;
@@ -105,14 +109,14 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
                     keyPath: "id",
                     autoIncrement: true 
                 });
-                if(indexes != undefined) {
+                if(this._indexes != undefined) {
                     var n : number;
 
-                    for(n = 0; n < indexes.length; n++) {
-                        await this.crearIndex(os, indexes[n]);
+                    for(n = 0; n < this._indexes.length; n++) {
+                        await this.crearIndex(os, this._indexes[n]);
                     }
                 }
-                resolve();
+                resolve(db);
             };
     
         });
@@ -198,17 +202,17 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
                 } else {
                     key = IDBKeyRange.bound(value, secondValue);
                 }
-
-                const request = objectStore.openCursor(key, 'nextunique');
+                const request = objectStore.index(indexName).getAll(key);
                 request.onerror = () => {
                     reject(request.error);
                 }
                 request.onsuccess = () => {
-                    const cursor = request.result;
-                    if(cursor) {
-                        const reg = cursor.value;
-                        retorn.push(reg.object);
-                        cursor.continue();
+                    const resultats = request.result;
+
+                    if(resultats) {
+                        resultats.forEach((reg : DbRegister<T>) => {
+                            retorn.push(reg.object);
+                        });
                     }
                     resolve(retorn);
                 }
@@ -252,30 +256,21 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
     }
 
     private async openStore(dbName:string, dbStore: string, openMode : IDBTransactionMode) : Promise<IDBObjectStore> {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             if(!this._status) {
                 reject("Base de dades no preparada!");
             }
 
-            let dbRequest: IDBOpenDBRequest;
-            var db : IDBDatabase;
-
-            dbRequest = indexedDB.open(dbName, 1);
-            dbRequest.onerror = (ev) => {
-                reject(ev);
+            const db = await this.openDb(dbName);
+            const tx = db.transaction(dbStore, openMode);
+            tx.onabort = (ev) => {
+                throw new Error(`Transacció abortada! (${ev})`);
             }
-            dbRequest.onsuccess = () => {
-                db = dbRequest.result;
-                const tx = db.transaction(dbStore, openMode);
-                tx.onabort = (ev) => {
-                    throw new Error(`Transacció abortada! (${ev})`);
-                }
-                tx.onerror = (ev) => {
-                    throw new Error(`Error en transacció! (${ev})`);
-                }
-                const objectStore = tx.objectStore(dbStore);
-                resolve(objectStore);
+            tx.onerror = (ev) => {
+                throw new Error(`Error en transacció! (${ev})`);
             }
+            const objectStore = tx.objectStore(dbStore);
+            resolve(objectStore);
         });
     }
 }

@@ -1,6 +1,9 @@
 import moment from 'moment';
 import { DbStorage_Api, IndexDefinition, instantiateDb } from './timetracker-db';
 
+const TIMETRACKER_DBNAME = "DBTIMETRACKER";
+const MOMENTS_IDX_NAME = 'idx_moments';
+
 export enum CheckState {
     CheckedInState = "CheckedIn",
     CheckedOutState = "CheckedOut"
@@ -28,17 +31,9 @@ class CheckOperationRegisterImpl implements CheckOperationRegister {
         return this._checkOperation;
     }
 
-    public constructor (moment?: number, operation?: CheckOperation) {
-        if(moment == undefined) {
-            this._moment = Date.now();
-        } else {
-            this._moment = moment;
-        }
-        if(operation == undefined) {
-            this._checkOperation = getApiInstance().nextCheckOperation;
-        } else {
-            this._checkOperation = operation;
-        }
+    public constructor (moment: number, operation: CheckOperation) {
+        this._moment = moment;
+        this._checkOperation = operation;
     }
 }
 
@@ -81,9 +76,9 @@ export interface ApiCheckRegister {
     unSubscribeToChanges(id:number):void;
 
     validateManualOperation(register: CheckOperationRegister): boolean;
-    autoCheckOperation(): CheckOperationRegister;
-    manualCheckOperation(moment: number, operation: CheckOperation): CheckOperationRegister;
-    findOperations(temporalFrame: TemporalFrame): CheckOperationRegister [];
+    autoCheckOperation(): Promise<CheckOperationRegister>;
+    manualCheckOperation(moment: number, operation: CheckOperation): Promise<CheckOperationRegister>;
+    findOperations(temporalFrame: TemporalFrame): Promise<CheckOperationRegister []>;
     timeSinceLastOperation():number;
 }
 
@@ -97,12 +92,10 @@ class regSbucriber {
 
 }
 
-class ApiCheckRegisterSingleton implements ApiCheckRegister {
-    private static _instance : ApiCheckRegisterSingleton;
+class ApiCheckRegisterImpl implements ApiCheckRegister {
     private _checkOperation: CheckOperationRegister | undefined;
     private _lastSyncrhonization: number;
     private _pendingSyncrhonizationRegisters: number;
-    private _operations: CheckOperationRegister [];
 
     private _tsLasChange: number | undefined;
     private _currentState: CheckState;
@@ -114,7 +107,6 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
     constructor () {
         this._lastSyncrhonization = 0;
         this._pendingSyncrhonizationRegisters = 0;
-        this._operations = new Array();
         this._tsLasChange = Date.now();
         this._currentState = CheckState.CheckedOutState;
         this._subscribers = new Array();
@@ -141,7 +133,7 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
         return this._pendingSyncrhonizationRegisters;
     }
     get nextCheckOperation(): CheckOperation {
-        if(this._currentState == CheckState.CheckedInState) {
+        if(this._currentState === CheckState.CheckedInState) {
             return CheckOperation.CheckOutOperation;
         } else {
             return CheckOperation.CheckInOperation;
@@ -157,13 +149,16 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
             return item.id != id;
         });
     }
-    autoCheckOperation(): CheckOperationRegister {
+    async autoCheckOperation(): Promise<CheckOperationRegister> {
         var reg : CheckOperationRegisterImpl;
 
-        reg = new CheckOperationRegisterImpl();
-        return this.registerOp(reg);
+        reg = new CheckOperationRegisterImpl(Date.now(), this.nextCheckOperation);
+        const ret = await this.registerOp(reg);
+        return new Promise((resolve,) => {
+            resolve(ret);
+        })
     }
-    manualCheckOperation(moment: number, operation: CheckOperation): CheckOperationRegister {
+    async manualCheckOperation(moment: number, operation: CheckOperation): Promise<CheckOperationRegister> {
         var reg : CheckOperationRegisterImpl;
 
         reg = new CheckOperationRegisterImpl(moment, operation);
@@ -173,8 +168,8 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
         return this.registerOp(reg);
     }
 
-    findOperations(temporalFrame: TemporalFrame): CheckOperationRegister[] {
-        var resultat : CheckOperationRegister [];
+    async findOperations(temporalFrame: TemporalFrame): Promise<CheckOperationRegister[]> {
+        var resultat : CheckOperationRegister [] = [];
         var dStart : number;
         var dEnd : number;
 
@@ -195,12 +190,13 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
                 dEnd = moment().endOf('month').toDate().getTime();
             break;
         }
-        resultat = new Array();
-        this._operations.forEach(function (reg) {
-            if(reg.moment >= dStart && reg.moment <= dEnd) {
-                resultat.push(reg);
-            }
-        });
+        this.dbCheckAndOpen().then((db : DbStorage_Api<CheckOperationRegister>) => {
+            db.findRegistersByIndex(MOMENTS_IDX_NAME, dStart, dEnd).then((result : CheckOperationRegister[]) => {
+                resultat = result;
+            });
+        }).catch((reason) => {
+            throw new Error(reason);
+        })
         return resultat;
     }
 
@@ -215,23 +211,17 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
         }
         return -1;
     }
-    static getInstance() : ApiCheckRegister {
-        if (! ApiCheckRegisterSingleton._instance) {
-            ApiCheckRegisterSingleton._instance = new ApiCheckRegisterSingleton();
-        }
-        return ApiCheckRegisterSingleton._instance;
-    }
 
-    private registerOp(reg: CheckOperationRegisterImpl) : CheckOperationRegister {
+    private async registerOp(reg: CheckOperationRegisterImpl) : Promise<CheckOperationRegister> {
         var event: CheckEventImpl;
-        this.dbRegisterOp(reg);
-        this._operations.push(reg);
+        await this.dbRegisterOp(reg);
+        this._checkOperation = reg;
         this._tsLasChange = reg.moment;
-        this._currentState = (reg.checkOperation == CheckOperation.CheckInOperation ? CheckState.CheckedInState : CheckState.CheckedOutState);
+        this._currentState = (reg.checkOperation === CheckOperation.CheckInOperation ? CheckState.CheckedInState : CheckState.CheckedOutState);
         event = new CheckEventImpl(reg, this._currentState);
         this._subscribers.forEach((item) => {
             item.fn(event);
-        })
+        });
         return reg;
     }
 
@@ -239,12 +229,12 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
         if(this._dbstorage === undefined) {
             this._dbstorage = await this.dbCheckAndOpen();
         }
-        this._dbstorage.addRegister(reg);
+        await this._dbstorage.addRegister(reg);
     }
 
     private async dbCheckAndOpen() : Promise<DbStorage_Api<CheckOperationRegister>> {
         return new Promise(async (resolve, reject) => {
-            instantiateDb<CheckOperationRegister>("DBTIMETRACKER", [new IndexDefinition("idx_moments", "moment", true)]).then((((value: DbStorage_Api<CheckOperationRegister>) => {
+            instantiateDb<CheckOperationRegister>(TIMETRACKER_DBNAME, [new IndexDefinition(MOMENTS_IDX_NAME, "moment", true)]).then((((value: DbStorage_Api<CheckOperationRegister>) => {
                 if(!value.checkStatus) {
                     reject("Cannot open DB!");
                 }
@@ -255,6 +245,6 @@ class ApiCheckRegisterSingleton implements ApiCheckRegister {
 }
 
 export function getApiInstance() : ApiCheckRegister {
-    return ApiCheckRegisterSingleton.getInstance();
+    return new ApiCheckRegisterImpl();
 }
 

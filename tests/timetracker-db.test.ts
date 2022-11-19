@@ -1,6 +1,8 @@
 import { DbStorage_Api, IndexDefinition, instantiateDb } from '../src/timetracker-db';
 
 const NREGISTRES = 10;
+const NREG_LOWER = 2;
+const NREG_UPPER = 7;
 const NITERACIONS = 100;
 
 afterEach(() => {
@@ -78,7 +80,6 @@ test("Crear diversos registres i llegir diversos aleatòriament", async () => {
     }
     n = await db.countRegisters();
     expect(n).toEqual(NREGISTRES);
-    console.debug("Anem a verificar...");
     for(n = 0; n < NITERACIONS; n++) {
         idx = Math.floor(Math.random() * 10);
         expected = regs[idx];
@@ -128,11 +129,11 @@ test("Crear diversos registres i llegir un grapat per índex", async () => {
         age = Math.floor(Math.random() * 60);
         reg = new TestRegister(`test-${n}`, age, `usr-test-${n}`);
         await db.addRegister(reg);
-        age = Math.floor(Math.random() * 1000);
-        if(age % 2 == 0) {
+        if(n >= NREG_LOWER && n <= NREG_UPPER) {
             regs.push(reg);
         }
     }
+
     n = await db.countRegisters();
     expect(n).toEqual(NREGISTRES);
     // Get first and last...
