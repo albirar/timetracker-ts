@@ -9,7 +9,6 @@ beforeEach(() => {
 
 afterEach(() => {
     indexedDB = new IDBFactory();
-    jest.resetModules();
 });
 
 test("Estat inicial esperat", () => {
@@ -59,7 +58,8 @@ test("Quan comença, diverses operacions de autocheck, aleshores generen els reg
         var op = await api.autoCheckOperation();
         expectedOps.push(op);
     }
-    const receivedOps = await api.findOperations(TemporalFrame.ThisDay);
+    // Ara el dia
+    var receivedOps = await api.findOperations(TemporalFrame.ThisDay);
     expect(receivedOps).not.toBeUndefined();
     expect(receivedOps).not.toBeNull();
     expect(receivedOps.length).toEqual(expectedOps.length);

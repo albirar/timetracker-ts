@@ -129,7 +129,7 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
             let reg : DbRegister<T>;
 
             reg = new DbRegister(register);
-            const request = objectStore.add(reg);
+            const request = objectStore.put(reg);
             request.onerror = () => {
                 objectStore.transaction.abort();
                 reject(request.error);
@@ -263,11 +263,8 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
 
             const db = await this.openDb(dbName);
             const tx = db.transaction(dbStore, openMode);
-            tx.onabort = (ev) => {
-                throw new Error(`Transacció abortada! (${ev})`);
-            }
             tx.onerror = (ev) => {
-                throw new Error(`Error en transacció! (${ev})`);
+                throw new Error(`Error en transacció! (${JSON.stringify(ev)})`);
             }
             const objectStore = tx.objectStore(dbStore);
             resolve(objectStore);
