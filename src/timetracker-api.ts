@@ -72,9 +72,9 @@ export interface ApiCheckRegister {
     get lastCheckOperation(): number | undefined;
     /**
      * Get the time of last synchronization.
-     * @return The last time synchronization was made or 0 if none was made yet
+     * @return The last time synchronization was made or 'undefined' if none was made yet
      */
-    get lastSynchronization(): number;
+    get lastSynchronization(): number | undefined;
     /**
      * Get the number of pending synchronization operations.
      * @return a number, greater or equals to zero, that indicates the number of pending synchronizations
@@ -141,7 +141,7 @@ class regSbucriber {
 
 class ApiCheckRegisterImpl implements ApiCheckRegister {
     private _checkOperation: CheckOperationRegister | undefined;
-    private _lastSyncrhonization: number;
+    private _lastSyncrhonization: number | undefined;
     private _pendingSyncrhonizationRegisters: number;
 
     private _tsLasChange: number | undefined;
@@ -152,7 +152,7 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
     private _dbstorage : DbStorage_Api<CheckOperationRegister> | undefined;
 
     constructor () {
-        this._lastSyncrhonization = 0;
+        this._lastSyncrhonization = undefined;
         this._pendingSyncrhonizationRegisters = 0;
         this._tsLasChange = undefined;
         this._currentState = CheckState.CheckedOutState;
@@ -173,7 +173,7 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
         }
         return this._checkOperation.moment;
     }
-    get lastSynchronization(): number {
+    get lastSynchronization(): number | undefined {
         return this._lastSyncrhonization;
     }
     get pendingSynchronizeRegisters(): number {
