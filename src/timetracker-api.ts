@@ -21,6 +21,9 @@ export class CheckOperationRegister {
         this.moment = moment;
         this.checkOperation = operation;
     }
+    static copyOf(reg:CheckOperationRegister) : CheckOperationRegister {
+        return new CheckOperationRegister(reg.moment, reg.checkOperation);
+    } 
 }
 
 export enum TemporalFrame {
@@ -30,27 +33,6 @@ export enum TemporalFrame {
     All
 }
 
-export interface CheckEvent {
-    get checkOperation() : CheckOperationRegister;
-    get currentState() : CheckState
-}
-
-class CheckEventImpl implements CheckEvent {
-    private _operation : CheckOperationRegister;
-    private _currentState : CheckState;
-
-    constructor(operation : CheckOperationRegister, currentState : CheckState) {
-        this._operation = operation;
-        this._currentState = currentState;
-    }
-    get checkOperation(): CheckOperationRegister {
-        return this._operation;
-    }
-    get currentState(): CheckState {
-        return this._currentState;
-    }
-
-}
 /**
  * Timetracker API management.
  */
@@ -86,19 +68,6 @@ export interface ApiCheckRegister {
      */
     get nextCheckOperation(): CheckOperation;
     /**
-     * Subscription to events for changes on check operations.
-     * Every time a {@link CheckOperation} is made, a call to the subscripted functions are made to inform to.
-     * @param fn A function to dispatch the event
-     * @return An unique identifier number in order to remove this subscription on any moment
-     * @see {@link unSubscribeToChanges}
-     */
-    subscribeToChanges(fn : (event: CheckEvent) => void):number;
-    /**
-     * Unsusbcribe the event dispatcher associates with the indicated id.
-     * @param id identifier returned by {@link subscribeToChanges} that identifies the subscription to remove
-     */
-    unSubscribeToChanges(id:number):void;
-    /**
      * Validate if the indicated operation is correct or not, based on {@link currentState} and the moment of the register.
      * @param register The register to validate
      * @return true is is correct and false if not
@@ -124,19 +93,9 @@ export interface ApiCheckRegister {
     findOperations(temporalFrame: TemporalFrame): Promise<CheckOperationRegister []>;
     /**
      * Calculates the time since last operation until now.
-     * @return The time
+     * @return The time or -1 if no operation was made yet
      */
     timeSinceLastOperation():number;
-}
-
-class regSbucriber {
-    id: number;
-    fn: {(event: CheckEvent): void};
-    constructor(id: number, fn: {(event: CheckEvent): void}) {
-        this.id=id;
-        this.fn=fn;
-    }
-
 }
 
 class ApiCheckRegisterImpl implements ApiCheckRegister {
@@ -147,8 +106,6 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
     private _tsLasChange: number | undefined;
     private _currentState: CheckState;
 
-    private _subscribers : regSbucriber[];
-
     private _dbstorage : DbStorage_Api<CheckOperationRegister> | undefined;
 
     constructor () {
@@ -156,7 +113,6 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
         this._pendingSyncrhonizationRegisters = 0;
         this._tsLasChange = undefined;
         this._currentState = CheckState.CheckedOutState;
-        this._subscribers = new Array();
         this._checkOperation = undefined;
     }
 
@@ -167,9 +123,9 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
     get currentState(): CheckState {
         return this._currentState;
     }
-    get lastCheckOperation(): number {
+    get lastCheckOperation(): number | undefined {
         if(this._checkOperation == undefined) {
-            return 0;
+            return undefined;
         }
         return this._checkOperation.moment;
     }
@@ -185,16 +141,6 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
         } else {
             return CheckOperation.CheckInOperation;
         }
-    }
-    subscribeToChanges(fn: (event: CheckEvent) => void): number {
-        var regs: regSbucriber = new regSbucriber(Date.now(), fn);
-        this._subscribers.push(regs);
-        return regs.id;
-    }
-    unSubscribeToChanges(id: number) {
-        this._subscribers = this._subscribers.filter((item) => {
-            return item.id != id;
-        });
     }
     async autoCheckOperation(): Promise<CheckOperationRegister> {
         var reg : CheckOperationRegister;
@@ -250,7 +196,7 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
 
     validateManualOperation(register: CheckOperationRegister): boolean {
         return (register.moment <= Date.now()
-            && register.checkOperation != this.nextCheckOperation);
+            && register.checkOperation == this.nextCheckOperation);
     }
 
     timeSinceLastOperation(): number {
@@ -261,15 +207,11 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
     }
 
     private async registerOp(reg: CheckOperationRegister) : Promise<CheckOperationRegister> {
-        var event: CheckEventImpl;
-        await this.dbRegisterOp(reg);
-        this._checkOperation = reg;
-        this._tsLasChange = reg.moment;
+        this._checkOperation = CheckOperationRegister.copyOf(reg);
+        this._tsLasChange = Date.now();
         this._currentState = (reg.checkOperation === CheckOperation.CheckInOperation ? CheckState.CheckedInState : CheckState.CheckedOutState);
-        event = new CheckEventImpl(reg, this._currentState);
-        this._subscribers.forEach((item) => {
-            item.fn(event);
-        });
+        this._pendingSyncrhonizationRegisters++;
+        await this.dbRegisterOp(reg);
         return reg;
     }
 
@@ -282,7 +224,7 @@ class ApiCheckRegisterImpl implements ApiCheckRegister {
 
     private async dbCheckAndOpen() : Promise<DbStorage_Api<CheckOperationRegister>> {
         return new Promise(async (resolve, reject) => {
-            instantiateDb<CheckOperationRegister>(TIMETRACKER_DBNAME, [new IndexDefinition(MOMENTS_IDX_NAME, "moment", true)]).then((((value: DbStorage_Api<CheckOperationRegister>) => {
+            instantiateDb<CheckOperationRegister>(TIMETRACKER_DBNAME, [new IndexDefinition(MOMENTS_IDX_NAME, "moment", false)]).then((((value: DbStorage_Api<CheckOperationRegister>) => {
                 if(!value.checkStatus) {
                     reject("Cannot open DB!");
                 }

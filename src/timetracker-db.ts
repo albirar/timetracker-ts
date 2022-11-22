@@ -4,6 +4,7 @@
 
 const DB_NAME : string = "timetracker-db";
 const OBJECT_STORE_NAME : string = "registers";
+const DB_VERSION : number = 1;
  
 export interface DbStorage_Api<T> {
     checkStatus() : boolean;
@@ -94,7 +95,7 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
             if(indexes != undefined) {
                 this._indexes = indexes;
             }
-            dbRequest = indexedDB.open(this._dbName, 1);
+            dbRequest = indexedDB.open(this._dbName, DB_VERSION);
             dbRequest.onerror = (err) => {
                 reject(err);
             }
@@ -102,20 +103,45 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
                 this._status = true;
                 resolve(dbRequest.result);
             }
-            dbRequest.onupgradeneeded = async () => {
+            dbRequest.onupgradeneeded = async (event) => {
                 const db = dbRequest.result;
-                this._status = true;
-                let os = db.createObjectStore(OBJECT_STORE_NAME, {
-                    keyPath: "id",
-                    autoIncrement: true 
-                });
-                if(this._indexes != undefined) {
-                    var n : number;
+                if(event.oldVersion != DB_VERSION) {
+                    var regs : DbRegister<T> [] = [];
+                    var os : IDBObjectStore;
+                    if(event.oldVersion != 0) {
+                        // migrate...
+                        const tx = db.transaction(OBJECT_STORE_NAME, 'readonly');
+                        const objectStore = tx.objectStore(OBJECT_STORE_NAME);
+                        const dbr = objectStore.getAll();
+                        dbr.onsuccess = () => {
+                            regs = dbr.result;
+                            const idxs = objectStore.indexNames;
+                            var n : number;
+                            for(n = 0; n < idxs.length; n++) {
+                                objectStore.deleteIndex(idxs[n]);
+                            }
+                        }
+                        db.deleteObjectStore(OBJECT_STORE_NAME);
+                    }
 
-                    for(n = 0; n < this._indexes.length; n++) {
-                        await this.crearIndex(os, this._indexes[n]);
+                    os = db.createObjectStore(OBJECT_STORE_NAME, {
+                        keyPath: "id",
+                        autoIncrement: true 
+                    });
+                    if(this._indexes != undefined) {
+                        var n : number;
+                        
+                        for(n = 0; n < this._indexes.length; n++) {
+                            await this.crearIndex(os, this._indexes[n]);
+                        }
+                    }
+                    if(regs.length > 0) {
+                        regs.forEach(reg => {
+                            os.put(reg);
+                        });
                     }
                 }
+                this._status = true;
                 resolve(db);
             };
     
@@ -126,17 +152,24 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
         return new Promise(async (resolve, reject) => {
             const objectStore = await this.openStore(this._dbName, OBJECT_STORE_NAME, 'readwrite');
 
-            let reg : DbRegister<T>;
+            try {
+                let reg : DbRegister<T>;
+    
+                reg = new DbRegister(register);
+                const tx = objectStore.transaction;
+                tx.onerror = (ev) => {
+                    console.log(`Error: ${ev.type} at ${ev.timeStamp}`);
+                }
+                const request = objectStore.put(reg);
+                request.onerror = () => {
+                    reject(request.error);
+                }
+                request.onsuccess = () => {
+                    objectStore.transaction.commit();
+                    resolve(register);
+                }
+            } finally {
 
-            reg = new DbRegister(register);
-            const request = objectStore.put(reg);
-            request.onerror = () => {
-                objectStore.transaction.abort();
-                reject(request.error);
-            }
-            request.onsuccess = () => {
-                objectStore.transaction.commit();
-                resolve(register);
             }
         });
     }
@@ -263,10 +296,10 @@ class DbStorage_ApiImpl<T> implements DbStorage_Api<T> {
 
             const db = await this.openDb(dbName);
             const tx = db.transaction(dbStore, openMode);
-            tx.onerror = (ev) => {
-                throw new Error(`Error en transacció! (${JSON.stringify(ev)})`);
-            }
             const objectStore = tx.objectStore(dbStore);
+            tx.oncomplete = () => {
+                db.close();
+            }
             resolve(objectStore);
         });
     }
