@@ -8,8 +8,14 @@ export default [
     plugins: [esbuild()],
     output: [
       {
-        file: `dist/timetracker-api.cjs`,
+        file: `dist/timetracker-api_cjs.js`,
         format: 'cjs',
+        sourcemap: true,
+        exports: 'auto'
+      },
+      {
+        file: `dist/timetracker-api_es.js`,
+        format: 'es',
         sourcemap: true,
         exports: 'auto'
       },

@@ -19,9 +19,7 @@
     },
     "type": "module",
     "files": [
-        "dist/timetracker-api.cjs",
-        "dist/timetracker-api.cjs.map",
-        "dist/timetracker-api.d.ts"
+        "dist/*"
     ],
     "scripts": {
         "test": "jest --config=jest.config.cjs",
